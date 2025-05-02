@@ -1,0 +1,81 @@
+---
+title: "textmining_forsøg"
+author: "Alexander V. Christiansen"
+date: "2025-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(ggwordcloud)
+```
+```{r}
+brevbøger_eks <- read_csv("merged_brevbøger_1609-1615.csv")
+```
+```{r}
+brevbøger_eks %>% 
+  unnest_tokens(word, Content) -> brevbøger_tidy
+```
+
+```{r}
+brevbøger_tidy %>% 
+  count(word, Year, sort = TRUE)
+```
+
+
+```{r}
+brevbøger_tidy %>% 
+  count(word, Year) %>% 
+  group_by(Year) %>% 
+  summarise(total = sum(n)) -> total_words
+```
+
+```{r}
+brevbøger_tidy %>% 
+  count(word,Year, sort = TRUE) %>% 
+  left_join(total_words, by = "Year") -> brevbøger_count
+```
+
+```{r}
+brevbøger_count %>% 
+  bind_tf_idf(word, Year, n) -> brevbøger_tf_idf
+```
+
+```{r}
+brevbøger_tf_idf %>% 
+  arrange(desc(tf_idf))
+```
+```{r}
+brevbøger_clean <- brevbøger_tf_idf %>%
+  filter(!grepl("^\\d+$", word))
+```
+
+```{r}
+brevbøger_clean %>% 
+  arrange(desc(tf_idf))
+```
+
+```{r}
+brevbøger_clean %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% 
+  group_by(Year) %>% 
+  top_n(12) %>%
+  ungroup() %>% 
+  ggplot(aes(label = word, size = tf_idf, color = tf_idf)) +
+  geom_text_wordcloud_area() +
+  scale_size_area(max_size = 15) +  # <<< Bigger words!
+  theme_minimal() +
+  facet_wrap(~Year, ncol = 4, scales = "free") +
+  scale_color_gradient(low = "darkgoldenrod2", high = "darkgoldenrod4") +
+  labs(
+    title = "Mest fremtrædende ord hvert år",
+    subtitle = "Importance determined by term frequency (tf) - inversed document frequency (idf)",
+    caption = "Kancelliets brevbøger 1609-1615"
+  )
+```
