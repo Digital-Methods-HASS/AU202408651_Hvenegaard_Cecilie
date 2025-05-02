@@ -1,0 +1,54 @@
+---
+title: "pdf_extract"
+author: "Alexander V. Christiansen"
+date: "2025-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pdftools)
+library(dplyr)
+library(readr)
+```
+
+## R Markdown
+
+```{r}
+dir.create("data") 
+```
+
+```{r}
+
+```
+
+List all the files
+```{r}
+pdf_files <- list.files(path="data", pattern = "\\.pdf$", full.names = TRUE)
+```
+
+´
+```{r}
+extract_pdf_data <- function(file_path) {
+  # Read text from PDF
+  text <- pdf_text(file_path) %>% paste(collapse = " ") # Merge all pages
+  # Extract year from filename
+  file_name <- basename(file_path)
+  year <- gsub("\\.pdf$", "", file_name)
+  
+  data.frame(Year = year, Content = text, stringsAsFactors = FALSE)
+}
+```
+
+```{r}
+pdf_data <- lapply(pdf_files, extract_pdf_data) %>%
+  bind_rows()
+```
+
+```{r}
+write_csv(pdf_data, "merged_brevbøger_1609-1615.csv")
+```
+
