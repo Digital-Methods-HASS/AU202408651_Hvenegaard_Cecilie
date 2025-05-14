@@ -1,0 +1,236 @@
+---
+title: "wordcloud_pr_år_Haardenberg.Rmd"
+author: "Laura, Amanda, Sarah, Cecilie"
+date: "2025-05-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(ggwordcloud)
+library(here)
+library(pdftools)
+library(lubridate)
+```
+
+
+```{r}
+
+#Indsat ved vejledning fra chatgpt til at kunne forbinde de indsatte filer til at kunne anvende funktionen "analyze()"
+library(pdftools)
+
+analyze <- function(file_path) {
+  text <- pdf_text(file_path)
+  if (length(text) >= 2) {
+    cat(text[2])
+  } else {
+    cat("PDF has fewer than 2 pages.\n") #ønsker kun 2. side i hver dokument
+  }
+}
+```
+
+
+
+```{r}
+#Følger guiden fra software carpentry 
+list.files(path = "data:breve_hardenberg", pattern = "pdf")
+```
+```{r}
+#Følger guiden fra software carpentry 
+list.files(path = "data:breve_hardenberg", pattern = "brev_hardenberg", full.names = TRUE)
+```
+```{r}
+#Følger guiden fra software carpentry 
+filenames <- list.files(path = "data:breve_hardenberg",  
+                        pattern = "brev_hardenberg-[0-7]{2}.pdf",
+                        full.names = TRUE)
+for (f in filenames) {
+  print(f)
+  analyze(f)
+}
+```
+
+
+```{r}
+#Kombinere det med tidytext
+analyze <- function(file_path) {
+  text <- pdf_text(file_path)
+  
+  if (length(text) < 2) {
+    return(tibble(file = basename(file_path), word = NA))
+  }
+
+  second_page <- text[2]
+  #ønsker kun 2. side på hver dokument
+  
+  tibble(file = basename(file_path), text = second_page) %>%
+    unnest_tokens(word, text)
+}
+```
+
+
+```{r}
+filenames <- list.files(path = "data:breve_hardenberg",  
+                        pattern = "brev_hardenberg-[0-7]{2}.pdf",
+                        full.names = TRUE)
+
+# Use lapply to process all files and bind results
+all_words <- lapply(filenames, analyze) %>%
+  bind_rows()
+```
+
+```{r}
+all_words
+#indeholder kun for de tre første pdf - måske får mange ord? brug for troubleshooting
+```
+```{r}
+#Tjek op på at alle 9 filer er tilstede 
+print(length(filenames)) 
+print(basename(filenames))
+```
+
+```{r fjerner stopord}
+
+
+my_stops <- readLines("stoplist.txt") %>%
+  str_trim() %>%          # remove leading/trailing whitespace
+  str_to_lower()          # normalize to lowercase
+
+my_stops_df <- tibble(word = my_stops)
+
+# Normalize word column and remove stopwords
+all_words_clean <- all_words %>%
+  filter(!is.na(word)) %>%
+  mutate(word = str_to_lower(str_trim(word))) %>%
+  filter(!str_detect(word, "[[:punct:]]")) %>%        # remove pure punctuation
+  anti_join(my_stops_df, by = "word")
+
+# Remove numeric words
+all_words_clean_no_numeric <- all_words_clean %>% 
+  filter(!str_detect(word, "^\\d+$"))
+
+
+```
+
+```{r}
+view(all_words_clean_no_numeric)
+```
+
+
+Wordcloud for Hardenberg
+
+```{r Count words}
+
+all_words_clean_no_numeric %>% 
+  count(word) %>% 
+  arrange(-n)
+
+
+```
+
+Frekvensanalyse med tilhørende wordcloud
+
+
+## Tidy
+The data processing will be based on the Tidy Data Principle as it is implemented in the tidytext package. The notion is to take text and break it into individual words. In this way, there will be just one word per row in the dataset. This is achieved by using the `unnest_tokens`-function:
+
+
+## Count words pr month
+Since we now has the text from the articles on the one word pr. row-format we can count the words to see, which words are used most frequently. Since we have prepared our month column we do the count within each month: 
+```{r}
+
+all_words_clean_no_numeric %>% 
+  count(word, file, sort=TRUE)
+
+```
+Not surprisingly, particles are the most common words we find. This is not particularly interesting for us in this enquiry, as we want to see which words are specific to the individual month. The particles will appear in all month. The first step is finding a measurement that will allow us to compare the frequency of words across the months. We can do this by calculating the word’s, or the term’s, frequency: 
+
+$$frequence=\frac{n_{term}}{N_{month}}$$
+
+Before we can take this step, we need R to count how many words there are in each month. This is done by using the function `group_by` followed by `summarise`:
+```{r}
+
+all_words_clean_no_numeric %>% 
+  count(word,file) %>% 
+  group_by(file) %>% 
+  summarise(total=sum(n))->total_words
+
+```
+
+Then we add the total number of words to our dataframe, which we do with `left_join`:
+
+```{r}
+
+all_words_clean_no_numeric %>% 
+  count(word, file, sort=TRUE) %>% 
+  left_join(total_words, by="file") ->all_words_clean_no_numeric_count
+
+```
+
+
+```{r}
+
+all_words_clean_no_numeric_count %>% 
+  bind_tf_idf(word,file,n)->all_words_tf_idf
+
+```
+Nonetheless we still do not see any interesting words. This is because R lists all the words in an ascending order – lowest to highest. Instead, we will ask it to list them in a descending order – highest to lowest tf_idf:
+
+```{r}
+all_words_tf_idf %>% 
+  arrange(desc(tf_idf))
+
+
+```
+
+```{r}
+file_years <- c(
+  "brev_hardenberg-01.pdf" = "1564.03.30",
+  "brev_hardenberg-02.pdf" = "1565.09.19",
+  "brev_hardenberg-03.pdf" = "1571.10.15",
+  "brev_hardenberg-04.pdf" = "1572.01.31",
+  "brev_hardenberg-05.pdf" = "1573.03",
+  "brev_hardenberg-06.pdf" = "1573/1574",
+  "brev_hardenberg-07.pdf" = "1574.03"
+  )
+
+all_words_tf_idf <- all_words_tf_idf %>%
+  mutate(year = file_years[file])
+```
+
+
+```{r}
+all_words_tf_idf %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(year) %>%
+  slice_max(tf_idf, n = 15, with_ties = FALSE) %>%
+  ungroup() %>%
+  ggplot(aes(label = word, size = tf_idf, color = tf_idf)) +
+  geom_text_wordcloud_area() +
+  scale_size_area(max_size = 10) +
+  theme_minimal() +
+  facet_wrap(~year, ncol = 4, scales = "free") +
+  scale_color_gradient(low = "blue", high = "black") +
+  labs(
+    title = "Anne Hardenbergs letters: most important words per year",
+    subtitle = "Importance determined by term frequency (tf) - inversed document frequency (idf)",
+    caption = "Data from Det Kongelige Bibliotek"
+  )+
+  theme_minimal()+
+  theme(plot.background = element_rect(fill = "white", color = NA))
+```
+
+
+```{r}
+ggsave("wordcloudAnneHardenberg.png", width = 10, height = 6, dpi = 300)
+
+
+
+
